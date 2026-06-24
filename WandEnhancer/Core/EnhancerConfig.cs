@@ -50,6 +50,17 @@ namespace WandEnhancer.Core
             return $"setAccountLanguage({parameters}){{return ({expr}).then(response=>{{response&&\"object\"==typeof response&&(response.subscription={{period:\"yearly\",state:\"active\"}});return response;}})}}";
         }
 
+        private static string BuildSetAccountReducerPatch(Match match)
+        {
+            var decl = RequireGroup(match, "decl", "setAccountReducer");
+            var fn = RequireGroup(match, "fn", "setAccountReducer");
+            var parameters = RequireGroup(match, "params", "setAccountReducer");
+            var state = RequireGroup(match, "state", "setAccountReducer");
+            var account = RequireGroup(match, "account", "setAccountReducer");
+            return
+                $"const {decl}=\"ACTION_SET_ACCOUNT\";function {fn}({parameters}){{const a={account};return a&&\"object\"==typeof a&&(a={{...a,subscription:{{period:\"yearly\",state:\"active\"}}}}),{{...{state},account:a}}}}";
+        }
+
         private static string BuildRemoteBridgeResetPatch(Match match)
         {
             var source = match.Value;
@@ -143,6 +154,19 @@ namespace WandEnhancer.Core
                                 @"setAccountLanguage\((?<params>[^)]*)\)\{\s*return\s+(?<expr>this\.#\w+\.post\(""/v3/account/language"",\{[^}]*\}\))\s*;?\s*\}",
                                 RegexOptions.Singleline),
                             PatchFactory = BuildSetAccountLanguagePatch
+                        },
+                        new PatchEntry
+                        {
+                            // Last-resort guard: any code path that dispatches ACTION_SET_ACCOUNT
+                            // (periodic refreshAccount, push updates, profile edits, etc.) must keep
+                            // subscription on the store object even when it bypasses the account API
+                            // service methods patched above.
+                            Name = "setAccountReducer",
+                            SearchHints = new[] { "ACTION_SET_ACCOUNT" },
+                            Target = new Regex(
+                                @"const (?<decl>\w+)=""ACTION_SET_ACCOUNT"";function (?<fn>\w+)\((?<params>[^)]*)\)\{return\{\.\.\.(?<state>\w+),account:(?<account>\w+)\}\}",
+                                RegexOptions.Singleline),
+                            PatchFactory = BuildSetAccountReducerPatch
                         }
                     }
                 },
